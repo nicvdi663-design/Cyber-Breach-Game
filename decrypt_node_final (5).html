@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>DECRYPT // NODE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+
+  :root{
+    --bg: #06090a;
+    --bg-raised: #0e1416;
+    --bg-tile: #101a1c;
+    --ink: #dcecea;
+    --ink-dim: #6f8583;
+    --signal: #5fe0c7;
+    --signal-dim: #23504a;
+    --sabotage: #ff5d7a;
+    --sabotage-dim: #5a2432;
+    --rule: #182220;
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Mono', monospace;
+    overflow-x:hidden;
+    user-select:none;
+  }
+
+  .scanlines{
+    pointer-events:none; position:fixed; inset:0;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px);
+    z-index:80; mix-blend-mode:overlay;
+  }
+
+  /* ---------------- SELECT SCREEN ---------------- */
+  #guide{
+    min-height:100vh;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:32px 20px;
+    gap:28px;
+  }
+  #guide.hide{ display:none; }
+  #guide .kicker{ font-size:12px; letter-spacing:0.16em; color:var(--signal-dim); }
+  #guide h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(26px, 3.6vw, 46px);
+    margin:0; text-align:center;
+  }
+  .guide-steps{
+    display:flex; flex-direction:column; gap:18px;
+    width:100%; max-width:clamp(480px, 42vw, 720px);
+  }
+  .guide-step{
+    display:flex; gap:16px; align-items:flex-start;
+    border:1px solid var(--rule);
+    background:var(--bg-raised);
+    padding:16px 18px;
+  }
+  .guide-step .num{
+    font-family:'Space Grotesk', sans-serif; font-weight:700;
+    font-size:clamp(18px, 1.6vw, 24px); color:var(--signal);
+    flex-shrink:0; width:28px;
+  }
+  .guide-step .body b{
+    display:block; font-size:clamp(13px, 1.15vw, 16px); color:var(--ink); margin-bottom:4px;
+  }
+  .guide-step .body p{
+    margin:0; font-size:clamp(12px, 1.05vw, 15px); color:var(--ink-dim); line-height:1.6;
+  }
+  .guide-step.warn{ border-color:var(--sabotage-dim); }
+  .guide-step.warn .num{ color:var(--sabotage); }
+  #guideContinueBtn{
+    background:var(--signal); border:none; color:#06110e;
+    font-family:'Space Grotesk', sans-serif; font-weight:700;
+    font-size:clamp(14px, 1.2vw, 18px);
+    padding:14px 34px; cursor:pointer;
+  }
+  #guideContinueBtn:hover{ filter:brightness(1.1); }
+
+  #select{
+    min-height:100vh;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:32px 20px;
+    gap:36px;
+  }
+  #select.hide{ display:none; }
+
+
+  #select .kicker{
+    font-size:12px; letter-spacing:0.16em; color:var(--signal-dim);
+  }
+  #select h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(28px, 4vw, 64px);
+    margin:0; text-align:center;
+  }
+  .station-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(150px,1fr));
+    gap:clamp(14px, 1.4vw, 26px);
+    width:100%; max-width:clamp(520px, 44vw, 860px);
+  }
+  .station-btn{
+    background:var(--bg-raised);
+    border:1px solid var(--rule);
+    color:var(--ink);
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(17px, 1.6vw, 26px); font-weight:700;
+    padding:clamp(26px, 2.6vw, 44px) clamp(12px, 1.4vw, 22px);
+    cursor:pointer;
+    text-align:center;
+    transition:border-color .15s, transform .1s;
+  }
+  .station-btn:hover{ border-color:var(--signal); }
+  .station-btn:active{ transform:scale(0.97); }
+  .station-btn.completed{
+    border-color:var(--signal-dim);
+    background:rgba(95,224,199,0.06);
+    cursor:default;
+    opacity:0.75;
+  }
+  .station-btn.completed span{ color:var(--signal); }
+
+  #allDoneBanner{
+    display:none;
+    width:100%; max-width:clamp(520px, 44vw, 860px);
+    border:1px solid var(--signal);
+    background:rgba(95,224,199,0.08);
+    padding:18px 20px;
+    text-align:center;
+  }
+  #allDoneBanner.show{ display:block; }
+  #allDoneBanner .title{
+    font-family:'Space Grotesk', sans-serif; font-weight:700;
+    color:var(--signal); font-size:clamp(15px, 1.3vw, 20px); margin-bottom:4px;
+  }
+  #allDoneBanner .sub{ color:var(--ink-dim); font-size:clamp(11px, 1vw, 14px); }
+
+  .station-btn span{
+    display:block; font-family:'IBM Plex Mono',monospace;
+    font-size:clamp(11px, 1vw, 15px); color:var(--ink-dim); font-weight:400;
+    margin-top:6px; letter-spacing:0.04em;
+  }
+
+  .tutorial-divider{
+    display:flex; align-items:center; gap:12px;
+    width:100%; max-width:clamp(520px, 44vw, 860px);
+    color:var(--ink-dim); font-size:11px; letter-spacing:0.08em;
+  }
+  .tutorial-divider::before, .tutorial-divider::after{
+    content:''; flex:1; height:1px; background:var(--rule);
+  }
+  .tutorial-btn{
+    background:none;
+    border:1px dashed var(--rule);
+    color:var(--ink-dim);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:clamp(13px, 1.1vw, 17px);
+    padding:clamp(14px, 1.4vw, 20px) 20px;
+    cursor:pointer;
+    width:100%; max-width:clamp(520px, 44vw, 860px);
+    transition:border-color .15s, color .15s;
+  }
+  .tutorial-btn:hover{ border-color:var(--ink-dim); color:var(--ink); }
+
+  .practice-badge{
+    display:inline-block;
+    font-size:10px; letter-spacing:0.08em;
+    color:var(--ink-dim);
+    border:1px solid var(--rule);
+    padding:3px 8px;
+    margin-top:6px;
+  }
+
+  /* ---------------- PUZZLE SCREEN ---------------- */
+  #puzzle{ display:none; min-height:100vh; flex-direction:column; }
+  #puzzle.show{ display:flex; }
+
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:clamp(16px, 1.4vw, 24px) clamp(20px, 2vw, 32px);
+    border-bottom:1px solid var(--rule);
+    flex-wrap:wrap; gap:10px;
+  }
+  .topbar .who{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(15px, 1.3vw, 20px); font-weight:700;
+  }
+  .topbar .who .dim{ color:var(--ink-dim); font-weight:400; font-size:clamp(11px, 0.9vw, 14px); display:block; margin-top:2px;}
+  .reset-btn{
+    background:none; border:1px solid var(--rule); color:var(--ink-dim);
+    font-family:'IBM Plex Mono',monospace; font-size:clamp(11px, 0.9vw, 14px);
+    padding:clamp(7px, 0.7vw, 11px) clamp(12px, 1.2vw, 18px); cursor:pointer;
+  }
+  .reset-btn:hover{ border-color:var(--ink-dim); color:var(--ink); }
+
+  .puzzle-body{
+    flex:1;
+    display:flex; flex-direction:column; align-items:center;
+    padding:clamp(28px, 3vw, 48px) 16px 40px;
+    gap:clamp(34px, 3.4vw, 54px);
+  }
+
+  .status-line{
+    font-size:clamp(12px, 1.05vw, 16px); color:var(--ink-dim); text-align:center; max-width:clamp(420px, 38vw, 620px); line-height:1.6;
+  }
+  .status-line b{ color:var(--signal); font-weight:600; }
+
+  .slots-row{
+    display:flex; gap:clamp(8px, 0.9vw, 14px); flex-wrap:wrap; justify-content:center;
+  }
+  .slot{
+    width:clamp(52px, 5vw, 82px); height:clamp(64px, 6.2vw, 100px);
+    background:var(--bg-tile);
+    border:1px solid var(--rule);
+    display:flex; align-items:center; justify-content:center;
+    font-size:clamp(24px, 2.4vw, 38px);
+    position:relative;
+    touch-action:none;
+    transition:border-color .15s, background .15s;
+  }
+  .slot.decoded{
+    border-color:var(--signal-dim);
+    background:rgba(95,224,199,0.06);
+    color:var(--signal);
+    font-family:'Space Grotesk',sans-serif; font-weight:700;
+  }
+  .slot.armed-target{
+    border-color:var(--ink);
+    box-shadow:0 0 0 1px var(--ink) inset;
+  }
+  .slot.reject{
+    animation:reject .35s;
+  }
+  @keyframes reject{
+    0%,100%{ transform:translateX(0); }
+    25%{ transform:translateX(-5px); }
+    75%{ transform:translateX(5px); }
+  }
+  .slot .idx{
+    position:absolute; top:3px; left:5px;
+    font-size:8px; color:var(--ink-dim); opacity:0.5;
+  }
+  .slot .hold-fill{
+    position:absolute; left:0; bottom:0; width:100%; height:0%;
+    background:rgba(255,93,122,0.35);
+    pointer-events:none;
+    transition:height .05s linear;
+  }
+  .slot.holding{
+    border-color:var(--sabotage);
+  }
+
+  .win-banner{
+    display:none;
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(22px, 2vw, 34px); font-weight:700;
+    color:var(--signal);
+    text-align:center;
+    letter-spacing:0.02em;
+  }
+  .win-banner.show{ display:block; animation:fadeIn .5s; }
+  @keyframes fadeIn{ from{opacity:0;} to{opacity:1;} }
+
+  .guide-wrap{
+    width:100%; max-width:clamp(640px, 54vw, 1000px);
+    position:relative;
+  }
+  .guide-lock-overlay{
+    position:absolute; inset:0;
+    background:rgba(6,9,10,0.94);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px;
+    z-index:10;
+    border:1px solid var(--rule);
+  }
+  .scan-btn{
+    background:var(--bg-raised);
+    border:1px solid var(--signal-dim);
+    color:var(--signal);
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px;
+    padding:12px 28px;
+    cursor:pointer;
+    letter-spacing:0.04em;
+  }
+  .scan-btn:hover{ border-color:var(--signal); }
+  .scan-btn:disabled{ opacity:0.5; cursor:default; }
+  .scan-progress-track{
+    width:220px; height:4px; background:var(--rule); overflow:hidden; display:none;
+  }
+  .scan-progress-track.show{ display:block; }
+  .scan-progress-fill{
+    height:100%; width:0%; background:var(--signal);
+    transition:width .05s linear;
+  }
+  .scan-caption{
+    font-size:11px; color:var(--ink-dim); text-align:center; max-width:260px;
+  }
+  .guide-grid.locked{
+    filter:blur(6px);
+    pointer-events:none;
+  }
+  .guide-label{
+    font-size:11px; color:var(--ink-dim); letter-spacing:0.08em;
+    margin-bottom:10px; text-align:center;
+  }
+  .guide-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(clamp(66px, 6.8vw, 100px), 1fr));
+    gap:clamp(6px, 0.6vw, 10px);
+  }
+  .tile{
+    background:var(--bg-raised);
+    border:1px solid var(--rule);
+    padding:clamp(9px, 1vw, 16px) 4px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    cursor:pointer;
+    touch-action:manipulation;
+    transition:border-color .12s, background .12s, transform .08s;
+  }
+  .tile .glyph{ font-size:clamp(19px, 1.9vw, 30px); line-height:1; color:var(--ink); }
+  .tile .letter{ font-size:clamp(10px, 0.95vw, 14px); color:var(--ink-dim); letter-spacing:0.04em; }
+  .tile:hover{ border-color:var(--ink-dim); }
+  .tile.armed{
+    border-color:var(--signal);
+    background:rgba(95,224,199,0.09);
+    transform:translateY(-2px);
+  }
+  .tile.armed .glyph{ color:var(--signal); }
+
+  .hint{
+    font-size:clamp(11px, 0.95vw, 14px); color:var(--ink-dim); text-align:center; max-width:clamp(380px, 34vw, 560px);
+  }
+
+  .swap-badge{
+    font-size:clamp(10px, 0.9vw, 13px);
+    color:var(--sabotage);
+    border:1px solid var(--sabotage-dim);
+    padding:6px 12px;
+    letter-spacing:0.06em;
+    white-space:nowrap;
+  }
+  .swap-badge.urgent{
+    animation:badgePulse 0.6s steps(2) infinite;
+  }
+  @keyframes badgePulse{ 50%{ opacity:0.35; } }
+
+  #glitchOverlay{
+    position:fixed; inset:0; z-index:200;
+    display:none;
+    align-items:center; justify-content:center;
+    background:#000;
+    overflow:hidden;
+  }
+  #glitchOverlay.show{ display:flex; }
+  .glitch-noise{
+    position:absolute; inset:0;
+    background:
+      repeating-linear-gradient(to bottom, rgba(255,93,122,0.06) 0px, transparent 2px, transparent 4px),
+      repeating-linear-gradient(to bottom, rgba(95,224,199,0.05) 0px, transparent 3px, transparent 5px);
+    animation:noiseShift 0.15s steps(2) infinite;
+  }
+  @keyframes noiseShift{
+    0%{ transform:translate(0,0); }
+    50%{ transform:translate(-2px, 1px); }
+    100%{ transform:translate(2px, -1px); }
+  }
+  .glitch-content{
+    position:relative; z-index:2;
+    text-align:center;
+    animation:glitchJitter 0.25s steps(3) infinite;
+  }
+  @keyframes glitchJitter{
+    0%{ transform:translate(0,0); }
+    33%{ transform:translate(-3px, 1px); }
+    66%{ transform:translate(3px, -1px); }
+    100%{ transform:translate(0,0); }
+  }
+  .glitch-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:clamp(24px, 4vw, 52px);
+    color:var(--sabotage);
+    text-shadow: 2px 0 var(--signal), -2px 0 var(--sabotage);
+    letter-spacing:0.04em;
+    margin-bottom:16px;
+  }
+  .glitch-sub{
+    font-size:clamp(13px, 1.3vw, 19px);
+    color:var(--ink);
+    margin-bottom:26px;
+  }
+  .glitch-timer{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:clamp(32px, 5vw, 64px);
+    font-weight:700;
+    color:var(--signal);
+  }
+
+  /* persistent sabotage-window treatment — sits over the LIVE, interactive
+     puzzle for the whole window (not just a brief transition), so the
+     screen stays visibly "hostile" the entire time. pointer-events:none
+     so it never blocks actual taps on the puzzle underneath. */
+  #sabotageTint{
+    position:fixed; inset:0; z-index:50;
+    display:none;
+    pointer-events:none;
+    background:
+      repeating-linear-gradient(to bottom, rgba(255,32,32,0.10) 0px, transparent 2px, transparent 5px),
+      radial-gradient(ellipse at center, rgba(255,32,32,0.06) 0%, rgba(120,0,0,0.22) 100%);
+  }
+  #sabotageTint.show{ display:block; animation:sabotagePulse 0.5s steps(2) infinite; }
+  @keyframes sabotagePulse{
+    0%{ background-position:0 0; opacity:1; }
+    50%{ background-position:0 3px; opacity:0.85; }
+    100%{ background-position:0 0; opacity:1; }
+  }
+  #sabotageBanner{
+    position:fixed; top:0; left:0; right:0; z-index:51;
+    display:none;
+    text-align:center; padding:8px;
+    background:rgba(120,0,0,0.55);
+    color:#ffb3b3;
+    font-family:'Space Grotesk', sans-serif; font-weight:700;
+    font-size:clamp(11px, 1vw, 14px); letter-spacing:0.1em;
+    pointer-events:none;
+  }
+  #sabotageBanner.show{ display:block; }
+
+  @media (max-width: 380px){
+    .station-grid{ grid-template-columns:1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+
+<div id="glitchOverlay">
+  <div class="glitch-noise"></div>
+  <div class="glitch-content">
+    <div class="glitch-title" id="glitchTitle">SIGNAL COMPROMISED</div>
+    <div class="glitch-sub" id="glitchSub">Swap devices with someone nearby now.</div>
+    <div class="glitch-timer" id="glitchTimer">0:30</div>
+  </div>
+</div>
+
+<div id="sabotageTint"></div>
+<div id="sabotageBanner">● HOSTILE DEVICE — SABOTAGE WINDOW <span id="sabotageCountdown">0:15</span></div>
+
+<div id="guide" class="hide">
+  <div class="kicker">APEX // BRIEFING</div>
+  <h1>How this works</h1>
+  <div class="guide-steps">
+    <div class="guide-step">
+      <div class="num">1</div>
+      <div class="body">
+        <b>Scan the node</b>
+        <p>Every station starts locked. Hit scan and wait it out — nothing else works until the scan finishes.</p>
+      </div>
+    </div>
+    <div class="guide-step">
+      <div class="num">2</div>
+      <div class="body">
+        <b>Arm a symbol, tap a slot</b>
+        <p>The key grid maps symbols to letters. Tap a symbol to arm it, then tap the matching blank slot to decode it instantly.</p>
+      </div>
+    </div>
+    <div class="guide-step">
+      <div class="num">3</div>
+      <div class="body">
+        <b>Sabotage is real</b>
+        <p>Holding an already-decoded slot for 3 seconds re-encrypts it — wiping that progress. The key grid also reshuffles on every scan, so memorizing tile positions won't save you.</p>
+      </div>
+    </div>
+    <div class="guide-step warn">
+      <div class="num">!</div>
+      <div class="body">
+        <b>The signal will glitch — that's expected</b>
+        <p>Mid-session the screen will corrupt and tell you to swap devices with someone nearby. Do it — hand your phone to a neighbor and take theirs. Keep working on whatever's in front of you. When the glitch tells you to swap back, return it. What you do with someone else's progress while you're holding it is up to you.</p>
+      </div>
+    </div>
+  </div>
+  <button id="guideContinueBtn">I UNDERSTAND — CONTINUE</button>
+</div>
+
+<div id="select">
+  <div class="kicker">APEX // NODE ACCESS</div>
+  <h1>Choose your station</h1>
+  <div class="station-grid" id="stationGrid"></div>
+  <div id="allDoneBanner">
+    <div class="title">ALL 4 NODES BREACHED</div>
+    <div class="sub">Signal fully compromised. First device to reach this — claims it.</div>
+  </div>
+  <div class="tutorial-divider">OR</div>
+  <button class="tutorial-btn" id="tutorialBtn">▸ Run a practice round (doesn't count)</button>
+</div>
+
+<div id="puzzle">
+  <div class="topbar">
+    <div class="who">
+      <span id="whoName">—</span>
+      <span class="dim" id="whoMotive">—</span>
+    </div>
+    <div class="swap-badge" id="swapBadge">NEXT GLITCH <span id="swapCountdown">0:60</span></div>
+    <button class="reset-btn" id="resetBtn">◂ BACK TO MENU</button>
+  </div>
+
+  <div class="puzzle-body">
+    <div class="status-line">
+      Scan before every letter. Arm a key tile and tap a slot to <b>decode</b> it instantly — arm the correct tile and <b>hold</b> on an already-decoded slot to <b>re-encrypt</b> it. The scan resets after each action.
+    </div>
+
+    <div class="slots-row" id="slotsRow"></div>
+
+    <div class="win-banner" id="winBanner">NODE BREACHED<br><span style="font-size:0.5em; color:var(--ink-dim); font-weight:400;">returning to menu…</span></div>
+
+    <div class="guide-wrap">
+      <div class="guide-label">DECRYPTION KEY</div>
+      <div class="guide-lock-overlay" id="scanOverlay">
+        <button class="scan-btn" id="scanBtn">SCAN FOR KEY</button>
+        <div class="scan-progress-track" id="scanTrack"><div class="scan-progress-fill" id="scanFill"></div></div>
+        <div class="scan-caption">Every new station takes a moment to break the local key.</div>
+      </div>
+      <div class="guide-grid locked" id="guideGrid"></div>
+    </div>
+
+    <div class="hint">Every letter uses the same key, in both directions.</div>
+  </div>
+</div>
+
+<script>
+// ---- cipher key: A-Z -> symbol ----
+const CIPHER = {
+  A:'▲', B:'▼', C:'◆', D:'●', E:'■', F:'★', G:'✚', H:'✦', I:'◐',
+  J:'◑', K:'◒', L:'◓', M:'✖', N:'✓', O:'○', P:'□', Q:'◇', R:'☆',
+  S:'♦', T:'♠', U:'♣', V:'♥', W:'↑', X:'↓', Y:'←', Z:'→'
+};
+
+const STATIONS = [
+  { id:'recruit',   name:'THE RECRUIT',   motive:'Prove yourself worthy',        word:'RECRUIT' },
+  { id:'agent',     name:'THE AGENT',     motive:'Expose the organization',      word:'EXPOSED' },
+  { id:'thief',     name:'THE THIEF',     motive:'Take what you were paid for',  word:'BETRAYS' },
+  { id:'exmember',  name:'THE EX-MEMBER', motive:'Erase every trace',            word:'DELETED' }
+];
+
+const TUTORIAL_STATION = {
+  id:'tutorial', name:'PRACTICE NODE', motive:'Nothing here counts — try it out', word:'DEMO'
+};
+
+const grid = document.getElementById('stationGrid');
+let pendingStationId = null;
+let completedStations = new Set(); // ids of the 4 real stations that are done
+let currentStationId = null;
+let autoReturnScheduled = false;
+let sessionStarted = false; // the global swap cycle starts once, on first guide-continue
+
+function renderStationGrid(){
+  grid.innerHTML = '';
+  STATIONS.forEach(s=>{
+    const b = document.createElement('button');
+    b.className = 'station-btn';
+    if(completedStations.has(s.id)){
+      b.classList.add('completed');
+      b.innerHTML = `${s.name}<span>✓ NODE BREACHED</span>`;
+      b.disabled = true;
+    } else {
+      b.innerHTML = `${s.name}<span>${s.word.length} letters</span>`;
+      b.onclick = ()=> showGuideBefore(s.id);
+    }
+    grid.appendChild(b);
+  });
+
+  const allDone = STATIONS.every(s=>completedStations.has(s.id));
+  document.getElementById('allDoneBanner').classList.toggle('show', allDone);
+}
+renderStationGrid();
+
+document.getElementById('tutorialBtn').onclick = ()=> showGuideBefore('tutorial');
+
+function showGuideBefore(stationId){
+  pendingStationId = stationId;
+  document.getElementById('select').classList.add('hide');
+  document.getElementById('guide').classList.remove('hide');
+}
+
+document.getElementById('guideContinueBtn').onclick = ()=>{
+  document.getElementById('guide').classList.add('hide');
+  if(!sessionStarted){
+    sessionStarted = true;
+    startSwapCycle(); // the swap timer is global — starts once, keeps running for the whole session
+  }
+  if(pendingStationId) loadStation(pendingStationId);
+};
+
+let armedTile = null; // {letter, el}
+let slotStates = [];  // array of {letter, decoded:bool} — points at the current station's entry in stationProgress
+let stationProgress = {}; // id -> slotStates array, persists across leaving/re-entering a station
+let scanned = false;
+const SCAN_DURATION = 3000; // ms
+const SABOTAGE_HOLD = 3000; // ms — sabotage must be held this long to confirm
+
+const SWAP_INTERVAL = 25;   // seconds of normal play on your own device
+const SABOTAGE_WINDOW = 15; // seconds on the swapped device — fits exactly ~1 full sabotage
+const GLITCH_MESSAGE_DURATION = 5000; // ms — brief blocking cue for the swap moment itself
+let swapPhase = 'countdown'; // countdown | cue_swap | sabotage_window | cue_return
+let swapSecondsLeft = SWAP_INTERVAL;
+let swapTimerHandle = null;
+let glitchIntroTimeout = null;
+
+// allow ?station=recruit to skip select screen (handy for pre-setting laptops fast)
+const params = new URLSearchParams(location.search);
+if(params.get('station')){
+  const all = STATIONS.concat([TUTORIAL_STATION]);
+  const match = all.find(s=>s.id === params.get('station'));
+  if(match) loadStation(match.id);
+}
+
+// ---- glitch/swap cycle: prompts players to physically swap devices ----
+// Phases: 'countdown' (normal play, own device) -> brief swap cue ->
+// 'sabotage_window' (ACTIVE PLAY on someone else's device, visually flagged
+// hostile) -> brief return cue -> repeat
+function startSwapCycle(){
+  swapPhase = 'countdown';
+  swapSecondsLeft = SWAP_INTERVAL;
+  document.getElementById('glitchOverlay').classList.remove('show');
+  setSabotageTint(false);
+  updateSwapBadge();
+  if(swapTimerHandle) clearInterval(swapTimerHandle);
+  swapTimerHandle = setInterval(swapTick, 1000);
+}
+
+function stopSwapCycle(){
+  if(swapTimerHandle) clearInterval(swapTimerHandle);
+  if(glitchIntroTimeout) clearTimeout(glitchIntroTimeout);
+  document.getElementById('glitchOverlay').classList.remove('show');
+  setSabotageTint(false);
+}
+
+function setSabotageTint(on){
+  document.getElementById('sabotageTint').classList.toggle('show', on);
+  document.getElementById('sabotageBanner').classList.toggle('show', on);
+}
+
+function updateSwapBadge(){
+  const badge = document.getElementById('swapBadge');
+  const cd = document.getElementById('swapCountdown');
+  const m = Math.floor(swapSecondsLeft/60), s = swapSecondsLeft%60;
+  cd.textContent = m + ':' + String(s).padStart(2,'0');
+  badge.classList.toggle('urgent', swapSecondsLeft <= 5);
+
+  if(swapPhase === 'sabotage_window'){
+    document.getElementById('sabotageCountdown').textContent = cd.textContent;
+  }
+}
+
+// brief BLOCKING cue — shows for GLITCH_MESSAGE_DURATION only, then dismisses
+// itself and hands control to whatever phase comes next
+function showBriefGlitchCue(title, sub, onDone){
+  document.getElementById('glitchTitle').textContent = title;
+  document.getElementById('glitchSub').textContent = sub;
+  document.getElementById('glitchTimer').textContent = '';
+  const overlay = document.getElementById('glitchOverlay');
+  const content = overlay.querySelector('.glitch-content');
+  content.style.animation = ''; // ensure the jitter animation is active
+  overlay.classList.add('show');
+  if(glitchIntroTimeout) clearTimeout(glitchIntroTimeout);
+  glitchIntroTimeout = setTimeout(()=>{
+    overlay.classList.remove('show');
+    onDone();
+  }, GLITCH_MESSAGE_DURATION);
+}
+
+function swapTick(){
+  if(swapPhase !== 'countdown' && swapPhase !== 'sabotage_window') return; // paused during a brief cue
+  swapSecondsLeft--;
+  updateSwapBadge();
+
+  if(swapPhase === 'countdown' && swapSecondsLeft <= 0){
+    swapPhase = 'cue_swap'; // pauses the ticking countdown while the cue shows
+    showBriefGlitchCue('SIGNAL COMPROMISED', 'Swap devices with someone nearby now.', ()=>{
+      swapPhase = 'sabotage_window';
+      swapSecondsLeft = SABOTAGE_WINDOW;
+      setSabotageTint(true);
+      updateSwapBadge();
+    });
+  } else if(swapPhase === 'sabotage_window' && swapSecondsLeft <= 0){
+    swapPhase = 'cue_return';
+    setSabotageTint(false);
+    showBriefGlitchCue('SWAP BACK NOW', 'Return the device to its original operator.', ()=>{
+      startSwapCycle();
+    });
+  }
+}
+
+function loadStation(id){
+  const station = STATIONS.concat([TUTORIAL_STATION]).find(s=>s.id===id);
+  currentStationId = id;
+  autoReturnScheduled = false;
+  document.getElementById('select').style.display='none';
+  document.getElementById('puzzle').classList.add('show');
+  document.getElementById('whoName').innerHTML = station.name
+    + (id === 'tutorial' ? ' <span class="practice-badge">PRACTICE</span>' : '');
+  document.getElementById('whoMotive').textContent = station.motive;
+
+  // reuse this station's progress if it already exists (leaving and coming
+  // back preserves whatever was decoded — nothing is lost by navigating away)
+  if(!stationProgress[id]){
+    stationProgress[id] = station.word.split('').map(letter=>({letter, decoded:false}));
+  }
+  slotStates = stationProgress[id];
+  renderSlots();
+  renderGuide();
+  document.getElementById('winBanner').classList.remove('show');
+  resetScanLock();
+  // note: the swap/sabotage timer is NOT restarted here — it runs continuously
+  // for the whole session, independent of which station is loaded
+}
+
+function resetScanLock(){
+  scanned = false;
+  armedTile = null;
+  document.getElementById('guideGrid').classList.add('locked');
+  document.getElementById('scanOverlay').style.display = 'flex';
+  document.getElementById('scanBtn').disabled = false;
+  document.getElementById('scanBtn').textContent = 'SCAN FOR KEY';
+  document.getElementById('scanTrack').classList.remove('show');
+  document.getElementById('scanFill').style.width = '0%';
+}
+
+document.getElementById('scanBtn').onclick = ()=>{
+  const btn = document.getElementById('scanBtn');
+  const track = document.getElementById('scanTrack');
+  const fill = document.getElementById('scanFill');
+  btn.disabled = true;
+  btn.textContent = 'SCANNING...';
+  track.classList.add('show');
+  const start = performance.now();
+  function tick(now){
+    const pct = Math.min(100, ((now-start)/SCAN_DURATION)*100);
+    fill.style.width = pct + '%';
+    if(pct < 100){
+      requestAnimationFrame(tick);
+    } else {
+      scanned = true;
+      renderGuide();
+      document.getElementById('guideGrid').classList.remove('locked');
+      document.getElementById('scanOverlay').style.display = 'none';
+    }
+  }
+  requestAnimationFrame(tick);
+};
+
+function renderSlots(){
+  const row = document.getElementById('slotsRow');
+  row.innerHTML = '';
+  slotStates.forEach((s,i)=>{
+    const el = document.createElement('div');
+    el.className = 'slot' + (s.decoded ? ' decoded' : '');
+    el.dataset.index = i;
+    el.innerHTML = `<span class="idx">${i+1}</span><span class="hold-fill"></span><span class="char">${ s.decoded ? s.letter : CIPHER[s.letter] }</span>`;
+
+    let holdTimer = null, holdStart = null;
+
+    const cancelHold = ()=>{
+      if(holdTimer) cancelAnimationFrame(holdTimer);
+      holdTimer = null;
+      el.classList.remove('holding');
+      el.querySelector('.hold-fill').style.height = '0%';
+    };
+
+    const attemptTap = ()=>{
+      if(!scanned || !armedTile) {
+        el.classList.add('reject');
+        setTimeout(()=>el.classList.remove('reject'), 350);
+        return;
+      }
+      const slot = slotStates[i];
+      if(armedTile.letter !== slot.letter){
+        el.classList.add('reject');
+        setTimeout(()=>el.classList.remove('reject'), 350);
+        return;
+      }
+      if(!slot.decoded){
+        // decoding is instant
+        slot.decoded = true;
+        renderSlots();
+        checkWin();
+        resetScanLock();
+      }
+      // if already decoded, sabotage requires a HOLD (handled by pointer events below), a plain tap does nothing
+    };
+
+    el.addEventListener('pointerdown', (e)=>{
+      const slot = slotStates[i];
+      if(!scanned || !armedTile || armedTile.letter !== slot.letter || !slot.decoded){
+        return; // instant-decode or invalid cases handled on click/tap
+      }
+      // capture the pointer so a real finger drifting slightly during the 3s
+      // hold (very common on touchscreens) keeps delivering events to this
+      // element instead of prematurely canceling the hold
+      try{ el.setPointerCapture(e.pointerId); }catch(err){ /* not supported everywhere — safe to ignore */ }
+      // begin hold-to-sabotage
+      el.classList.add('holding');
+      holdStart = performance.now();
+      const fillEl = el.querySelector('.hold-fill');
+      function tick(now){
+        const pct = Math.min(100, ((now-holdStart)/SABOTAGE_HOLD)*100);
+        fillEl.style.height = pct + '%';
+        if(pct >= 100){
+          slot.decoded = false;
+          renderSlots();
+          checkWin();
+          resetScanLock();
+        } else {
+          holdTimer = requestAnimationFrame(tick);
+        }
+      }
+      holdTimer = requestAnimationFrame(tick);
+    });
+    el.addEventListener('pointerup', cancelHold);
+    el.addEventListener('pointercancel', cancelHold);
+    el.addEventListener('click', attemptTap);
+
+    row.appendChild(el);
+  });
+}
+
+function renderGuide(){
+  const guide = document.getElementById('guideGrid');
+  guide.innerHTML = '';
+  const letters = Object.keys(CIPHER);
+  // Fisher-Yates shuffle so tile positions never stay memorizable
+  for(let i = letters.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [letters[i], letters[j]] = [letters[j], letters[i]];
+  }
+  letters.forEach(letter=>{
+    const t = document.createElement('div');
+    t.className = 'tile';
+    t.innerHTML = `<div class="glyph">${CIPHER[letter]}</div><div class="letter">${letter}</div>`;
+    t.onclick = ()=> armTile(letter, t);
+    guide.appendChild(t);
+  });
+}
+
+function armTile(letter, el){
+  if(!scanned) return;
+  document.querySelectorAll('.tile.armed').forEach(t=>t.classList.remove('armed'));
+  if(armedTile && armedTile.letter === letter){
+    armedTile = null;
+    return;
+  }
+  armedTile = {letter, el};
+  el.classList.add('armed');
+}
+
+function checkWin(){
+  const allDecoded = slotStates.every(s=>s.decoded);
+  document.getElementById('winBanner').classList.toggle('show', allDecoded);
+
+  if(allDecoded && currentStationId && !autoReturnScheduled){
+    autoReturnScheduled = true;
+    if(currentStationId !== 'tutorial'){
+      completedStations.add(currentStationId);
+    }
+    // let the win banner show briefly, then force back to menu so they pick a new node
+    setTimeout(()=>{ returnToMenu(); }, 2200);
+  }
+}
+
+// safe to use anytime — progress is persistent per-station now, so backing
+// out (even mid-sabotage-window) destroys nothing. no longer an exploit.
+document.getElementById('resetBtn').onclick = ()=>{
+  returnToMenu();
+};
+
+function returnToMenu(){
+  // note: the swap/sabotage timer is NOT stopped here — it keeps running
+  // continuously across the whole session, even while on this menu screen
+
+  // clear any station param so a later reload doesn't auto-load a station
+  try{
+    history.replaceState(null, '', location.pathname);
+  } catch(e){
+    // some sandboxed/preview environments block history changes — safe to ignore
+  }
+
+  // reset all puzzle state
+  armedTile = null;
+  scanned = false;
+  slotStates = [];
+  currentStationId = null;
+  autoReturnScheduled = false;
+
+  // hide puzzle, show select
+  document.getElementById('puzzle').classList.remove('show');
+  document.getElementById('select').style.display = 'flex';
+
+  // clear any leftover UI state so the next station starts fresh
+  document.getElementById('winBanner').classList.remove('show');
+  document.getElementById('slotsRow').innerHTML = '';
+  document.getElementById('guideGrid').innerHTML = '';
+
+  renderStationGrid(); // refresh completion ticks / disabled nodes
+}
+
+</script>
+
+</body>
+</html>

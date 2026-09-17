@@ -139,6 +139,11 @@
     font-family:'Space Grotesk', sans-serif; font-weight:700;
     color:var(--signal); font-size:clamp(15px, 1.3vw, 20px); margin-bottom:4px;
   }
+  #allDoneBanner .final-time{
+    font-family:'Space Grotesk', sans-serif; font-weight:700;
+    color:var(--ink); font-size:clamp(30px, 4.5vw, 58px);
+    line-height:1; margin:10px 0 8px;
+  }
   #allDoneBanner .sub{ color:var(--ink-dim); font-size:clamp(11px, 1vw, 14px); }
 
   .station-btn span{
@@ -356,6 +361,15 @@
   }
   @keyframes badgePulse{ 50%{ opacity:0.35; } }
 
+  .run-timer{
+    font-size:clamp(10px, 0.9vw, 13px);
+    color:var(--signal);
+    border:1px solid var(--signal-dim);
+    padding:6px 12px;
+    letter-spacing:0.06em;
+    white-space:nowrap;
+  }
+
   #glitchOverlay{
     position:fixed; inset:0; z-index:200;
     display:none;
@@ -504,7 +518,8 @@
   <h1>Choose your station</h1>
   <div class="station-grid" id="stationGrid"></div>
   <div id="allDoneBanner">
-    <div class="title">ALL 4 NODES BREACHED</div>
+    <div class="title" id="allDoneTitle">ALL NODES BREACHED</div>
+    <div class="final-time" id="finalTime">--:--</div>
     <div class="sub">Signal fully compromised. First device to reach this — claims it.</div>
   </div>
   <div class="tutorial-divider">OR</div>
@@ -518,6 +533,7 @@
       <span class="dim" id="whoMotive">—</span>
     </div>
     <div class="swap-badge" id="swapBadge">NEXT GLITCH <span id="swapCountdown">0:60</span></div>
+    <div class="run-timer" id="runTimer">RUN 0:00</div>
     <button class="reset-btn" id="resetBtn">◂ BACK TO MENU</button>
   </div>
 
@@ -565,6 +581,8 @@ const grid = document.getElementById('stationGrid');
 let pendingStationId = null;
 let completedStations = new Set(); // ids of the 4 real stations that are done
 let tutorialCompleted = false;
+let runStartTime = null;   // set when the first real station is entered
+let runFinishTime = null;  // set when the final station is completed
 let currentStationId = null;
 let autoReturnScheduled = false;
 let sessionStarted = false; // the global swap cycle starts once, on first guide-continue
@@ -598,6 +616,20 @@ function renderStationGrid(){
 
   const allDone = STATIONS.every(s=>completedStations.has(s.id));
   document.getElementById('allDoneBanner').classList.toggle('show', allDone);
+
+  if(allDone){
+    // derive the count from STATIONS so this never goes stale if it changes
+    document.getElementById('allDoneTitle').textContent =
+      'ALL ' + STATIONS.length + ' NODES BREACHED';
+    if(runStartTime !== null && runFinishTime !== null){
+      const elapsed = (runFinishTime - runStartTime) / 1000;
+      const m = Math.floor(elapsed / 60);
+      const s = Math.floor(elapsed % 60);
+      const cs = Math.floor((elapsed % 1) * 100);
+      document.getElementById('finalTime').textContent =
+        m + ':' + String(s).padStart(2,'0') + '.' + String(cs).padStart(2,'0');
+    }
+  }
   updateTutorialButton();
 }
 renderStationGrid();
@@ -679,6 +711,18 @@ function updateSwapBadge(){
   if(swapPhase === 'sabotage_window'){
     document.getElementById('sabotageCountdown').textContent = cd.textContent;
   }
+
+  updateRunTimer();
+}
+
+function updateRunTimer(){
+  const el = document.getElementById('runTimer');
+  if(!el || runStartTime === null) return;
+  // freeze the display once the run is finished
+  const end = runFinishTime !== null ? runFinishTime : performance.now();
+  const elapsed = (end - runStartTime) / 1000;
+  const m = Math.floor(elapsed/60), s = Math.floor(elapsed%60);
+  el.textContent = 'RUN ' + m + ':' + String(s).padStart(2,'0');
 }
 
 // brief BLOCKING cue — shows for GLITCH_MESSAGE_DURATION only, then dismisses
@@ -745,6 +789,9 @@ function loadStation(id){
   document.getElementById('winBanner').classList.remove('show');
   resetScanLock();
 
+  // the run timer is meaningless during practice — hide it there
+  document.getElementById('runTimer').style.display = (id === 'tutorial') ? 'none' : 'block';
+
   if(id === 'tutorial'){
     // tutorial gets its own short, throwaway demo cycle every single time it's
     // entered — this never starts or affects the real session timer
@@ -754,6 +801,7 @@ function loadStation(id){
     // station is entered — completely fresh, then runs continuously for the
     // rest of the session regardless of navigation
     sessionStarted = true;
+    runStartTime = performance.now(); // begin timing the full run
     startSwapCycle(SWAP_INTERVAL);
   }
   // if sessionStarted is already true and id isn't tutorial, the real cycle
@@ -919,6 +967,10 @@ function checkWin(){
     autoReturnScheduled = true;
     if(currentStationId !== 'tutorial'){
       completedStations.add(currentStationId);
+      // stop the clock the instant the final station lands
+      if(runFinishTime === null && STATIONS.every(s=>completedStations.has(s.id))){
+        runFinishTime = performance.now();
+      }
     } else {
       tutorialCompleted = true;
     }

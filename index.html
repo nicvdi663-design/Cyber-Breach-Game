@@ -167,6 +167,11 @@
     transition:border-color .15s, color .15s;
   }
   .tutorial-btn:hover{ border-color:var(--ink-dim); color:var(--ink); }
+  .tutorial-btn.completed{
+    border-style:solid; border-color:var(--signal-dim);
+    color:var(--signal);
+  }
+  .tutorial-btn.completed:hover{ border-color:var(--signal); }
 
   .practice-badge{
     display:inline-block;
@@ -311,8 +316,9 @@
   }
   .guide-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(clamp(66px, 6.8vw, 100px), 1fr));
+    grid-template-columns:repeat(6, clamp(66px, 6.8vw, 100px));
     gap:clamp(6px, 0.6vw, 10px);
+    justify-content:center;
   }
   .tile{
     background:var(--bg-raised);
@@ -547,10 +553,8 @@ const CIPHER = {
 };
 
 const STATIONS = [
-  { id:'recruit',   name:'THE RECRUIT',   motive:'Prove yourself worthy',        word:'RECRUIT' },
-  { id:'agent',     name:'THE AGENT',     motive:'Expose the organization',      word:'EXPOSED' },
-  { id:'thief',     name:'THE THIEF',     motive:'Take what you were paid for',  word:'BETRAYS' },
-  { id:'exmember',  name:'THE EX-MEMBER', motive:'Erase every trace',            word:'DELETED' }
+  { id:'recruit',   name:'STAGE 1',   motive:'Prove yourself worthy',        word:'FIREWALL' },
+  { id:'agent',     name:'STAGE 2',   motive:'Expose the organization',      word:'OVERRIDE' }
 ];
 
 const TUTORIAL_STATION = {
@@ -560,9 +564,21 @@ const TUTORIAL_STATION = {
 const grid = document.getElementById('stationGrid');
 let pendingStationId = null;
 let completedStations = new Set(); // ids of the 4 real stations that are done
+let tutorialCompleted = false;
 let currentStationId = null;
 let autoReturnScheduled = false;
 let sessionStarted = false; // the global swap cycle starts once, on first guide-continue
+
+function updateTutorialButton(){
+  const btn = document.getElementById('tutorialBtn');
+  if(tutorialCompleted){
+    btn.classList.add('completed');
+    btn.innerHTML = '✓ Practice round complete — run it again anytime';
+  } else {
+    btn.classList.remove('completed');
+    btn.innerHTML = "▸ Run a practice round (doesn't count)";
+  }
+}
 
 function renderStationGrid(){
   grid.innerHTML = '';
@@ -582,6 +598,7 @@ function renderStationGrid(){
 
   const allDone = STATIONS.every(s=>completedStations.has(s.id));
   document.getElementById('allDoneBanner').classList.toggle('show', allDone);
+  updateTutorialButton();
 }
 renderStationGrid();
 
@@ -595,10 +612,6 @@ function showGuideBefore(stationId){
 
 document.getElementById('guideContinueBtn').onclick = ()=>{
   document.getElementById('guide').classList.add('hide');
-  if(!sessionStarted){
-    sessionStarted = true;
-    startSwapCycle(); // the swap timer is global — starts once, keeps running for the whole session
-  }
   if(pendingStationId) loadStation(pendingStationId);
 };
 
@@ -606,15 +619,19 @@ let armedTile = null; // {letter, el}
 let slotStates = [];  // array of {letter, decoded:bool} — points at the current station's entry in stationProgress
 let stationProgress = {}; // id -> slotStates array, persists across leaving/re-entering a station
 let scanned = false;
-const SCAN_DURATION = 3000; // ms
-const SABOTAGE_HOLD = 3000; // ms — sabotage must be held this long to confirm
+const SCAN_DURATION = 1000; // ms
+const SABOTAGE_HOLD = 2000; // ms — sabotage must be held this long to confirm
+const GUIDE_TILE_COUNT = 12; // word letters + decoys, not the full 26-letter alphabet
 
-const SWAP_INTERVAL = 25;   // seconds of normal play on your own device
-const SABOTAGE_WINDOW = 15; // seconds on the swapped device — fits exactly ~1 full sabotage
-const GLITCH_MESSAGE_DURATION = 5000; // ms — brief blocking cue for the swap moment itself
+const SWAP_INTERVAL = 20;   // seconds of normal play on your own device
+const TUTORIAL_SWAP_INTERVAL = 15; // glitch wait, just for practice runs
+const SABOTAGE_WINDOW = 15; // seconds on the swapped device — fits ~2 sabotage actions at current scan/hold speeds
+const TUTORIAL_SABOTAGE_WINDOW = 20; // longer, more forgiving sabotage window for practice
+const GLITCH_MESSAGE_DURATION = 4000; // ms — brief blocking cue for the swap moment itself
 let swapPhase = 'countdown'; // countdown | cue_swap | sabotage_window | cue_return
 let swapSecondsLeft = SWAP_INTERVAL;
 let swapTimerHandle = null;
+let swapCycleIsTutorial = false;
 let glitchIntroTimeout = null;
 
 // allow ?station=recruit to skip select screen (handy for pre-setting laptops fast)
@@ -629,9 +646,10 @@ if(params.get('station')){
 // Phases: 'countdown' (normal play, own device) -> brief swap cue ->
 // 'sabotage_window' (ACTIVE PLAY on someone else's device, visually flagged
 // hostile) -> brief return cue -> repeat
-function startSwapCycle(){
+function startSwapCycle(initialInterval, isTutorial){
   swapPhase = 'countdown';
-  swapSecondsLeft = SWAP_INTERVAL;
+  swapSecondsLeft = initialInterval || SWAP_INTERVAL;
+  swapCycleIsTutorial = !!isTutorial;
   document.getElementById('glitchOverlay').classList.remove('show');
   setSabotageTint(false);
   updateSwapBadge();
@@ -689,7 +707,7 @@ function swapTick(){
     swapPhase = 'cue_swap'; // pauses the ticking countdown while the cue shows
     showBriefGlitchCue('SIGNAL COMPROMISED', 'Swap devices with someone nearby now.', ()=>{
       swapPhase = 'sabotage_window';
-      swapSecondsLeft = SABOTAGE_WINDOW;
+      swapSecondsLeft = swapCycleIsTutorial ? TUTORIAL_SABOTAGE_WINDOW : SABOTAGE_WINDOW;
       setSabotageTint(true);
       updateSwapBadge();
     });
@@ -697,7 +715,11 @@ function swapTick(){
     swapPhase = 'cue_return';
     setSabotageTint(false);
     showBriefGlitchCue('SWAP BACK NOW', 'Return the device to its original operator.', ()=>{
-      startSwapCycle();
+      if(swapCycleIsTutorial){
+        stopSwapCycle(); // one-time demo — doesn't keep looping during practice
+      } else {
+        startSwapCycle(); // the real cycle repeats for the rest of the session
+      }
     });
   }
 }
@@ -722,8 +744,20 @@ function loadStation(id){
   renderGuide();
   document.getElementById('winBanner').classList.remove('show');
   resetScanLock();
-  // note: the swap/sabotage timer is NOT restarted here — it runs continuously
-  // for the whole session, independent of which station is loaded
+
+  if(id === 'tutorial'){
+    // tutorial gets its own short, throwaway demo cycle every single time it's
+    // entered — this never starts or affects the real session timer
+    startSwapCycle(TUTORIAL_SWAP_INTERVAL, true);
+  } else if(!sessionStarted){
+    // the real session timer starts exactly once — the first time a real
+    // station is entered — completely fresh, then runs continuously for the
+    // rest of the session regardless of navigation
+    sessionStarted = true;
+    startSwapCycle(SWAP_INTERVAL);
+  }
+  // if sessionStarted is already true and id isn't tutorial, the real cycle
+  // is mid-run — intentionally left untouched
 }
 
 function resetScanLock(){
@@ -838,12 +872,25 @@ function renderSlots(){
 function renderGuide(){
   const guide = document.getElementById('guideGrid');
   guide.innerHTML = '';
-  const letters = Object.keys(CIPHER);
+
+  const allLetters = Object.keys(CIPHER);
+  const wordLetters = [...new Set(slotStates.map(s=>s.letter))];
+  const decoyPool = allLetters.filter(l=>!wordLetters.includes(l));
+
+  // shuffle the decoy pool, then take just enough to fill out the tile count
+  for(let i = decoyPool.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [decoyPool[i], decoyPool[j]] = [decoyPool[j], decoyPool[i]];
+  }
+  const decoysNeeded = Math.max(0, GUIDE_TILE_COUNT - wordLetters.length);
+  const letters = [...wordLetters, ...decoyPool.slice(0, decoysNeeded)];
+
   // Fisher-Yates shuffle so tile positions never stay memorizable
   for(let i = letters.length - 1; i > 0; i--){
     const j = Math.floor(Math.random() * (i + 1));
     [letters[i], letters[j]] = [letters[j], letters[i]];
   }
+
   letters.forEach(letter=>{
     const t = document.createElement('div');
     t.className = 'tile';
@@ -872,6 +919,8 @@ function checkWin(){
     autoReturnScheduled = true;
     if(currentStationId !== 'tutorial'){
       completedStations.add(currentStationId);
+    } else {
+      tutorialCompleted = true;
     }
     // let the win banner show briefly, then force back to menu so they pick a new node
     setTimeout(()=>{ returnToMenu(); }, 2200);
@@ -885,8 +934,12 @@ document.getElementById('resetBtn').onclick = ()=>{
 };
 
 function returnToMenu(){
-  // note: the swap/sabotage timer is NOT stopped here — it keeps running
-  // continuously across the whole session, even while on this menu screen
+  // tutorial's demo cycle is throwaway — stop it cleanly on exit so it can
+  // never bleed into the real session timer. Once the real session has
+  // started, the cycle keeps running continuously no matter what, even here.
+  if(currentStationId === 'tutorial' && !sessionStarted){
+    stopSwapCycle();
+  }
 
   // clear any station param so a later reload doesn't auto-load a station
   try{

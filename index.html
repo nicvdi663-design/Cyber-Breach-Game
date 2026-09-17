@@ -27,6 +27,9 @@
     font-family:'IBM Plex Mono', monospace;
     overflow-x:hidden;
     user-select:none;
+    -webkit-user-select:none;
+    -webkit-touch-callout:none; /* iOS: suppresses the long-press magnifier/
+      Copy-Look Up popup, which was hijacking the hold-to-sabotage gesture */
   }
 
   .scanlines{
@@ -569,8 +572,8 @@ const CIPHER = {
 };
 
 const STATIONS = [
-  { id:'recruit',   name:'STAGE 1',   motive:'Prove yourself worthy',        word:'FIREWALL' },
-  { id:'agent',     name:'STAGE 2',   motive:'Expose the organization',      word:'OVERRIDE' }
+  { id:'recruit',   name:'STAGE 1',   motive:'Prove yourself worthy',        word:'EXPLOIT' },
+  { id:'agent',     name:'STAGE 2',   motive:'Expose the organization',      word:'PAYLOAD' }
 ];
 
 const TUTORIAL_STATION = {
